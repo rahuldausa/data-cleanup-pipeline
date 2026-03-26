@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Healthcare Credentialing - Data Cleansing Report</title>
+  <style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #0f1117;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+header {
+  background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
+  padding: 28px 40px 20px;
+  border-bottom: 3px solid #2962ff;
+}
+header h1 { font-size: 1.6rem; font-weight: 700; color: #fff; }
+header p  { color: #90caf9; margin-top: 4px; font-size: 0.9rem; }
+
+/* ── Stats bar ── */
+.stats-bar {
+  display: flex; align-items: center; gap: 16px;
+  flex-wrap: wrap; margin-top: 20px;
+}
+.stat {
+  background: rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 18px;
+  text-align: center;
+  min-width: 110px;
+}
+.stat-num   { display: block; font-size: 1.8rem; font-weight: 700; color: #fff; }
+.stat-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #90caf9; margin-top: 2px; }
+.stat-arrow { font-size: 1.4rem; color: #546e7a; }
+.highlight-changed { border: 1px solid #ffa726; }
+.highlight-changed .stat-num { color: #ffa726; }
+.highlight-dup { border: 1px solid #ef5350; }
+.highlight-dup .stat-num { color: #ef5350; }
+.highlight-ok  { border: 1px solid #66bb6a; }
+.highlight-ok  .stat-num { color: #66bb6a; }
+.highlight-out { border: 1px solid #42a5f5; background: rgba(66,165,245,0.12); }
+.highlight-out .stat-num { color: #42a5f5; }
+.dim .stat-num { color: #90a4ae; }
+
+/* ── Tab nav ── */
+.tab-nav {
+  display: flex; gap: 0;
+  background: #161b22;
+  border-bottom: 2px solid #21262d;
+  padding: 0 40px;
+  position: sticky; top: 0; z-index: 10;
+}
+.tab-btn {
+  background: none; border: none; cursor: pointer;
+  padding: 16px 28px;
+  color: #8b949e;
+  font-size: 0.92rem; font-weight: 600;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.2s, border-color 0.2s;
+}
+.tab-btn:hover { color: #e0e0e0; }
+.tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+.tab-step { display: inline-block; width: 22px; height: 22px; border-radius: 50%;
+            background: #30363d; font-size: 0.75rem; line-height: 22px;
+            text-align: center; margin-right: 8px; }
+.tab-btn.active .tab-step { background: #58a6ff; color: #000; }
+
+/* ── Tab panels ── */
+.tab-panel { display: none; padding: 32px 40px; }
+.tab-panel.active { display: block; }
+
+.panel-title {
+  font-size: 1.1rem; font-weight: 700; color: #c9d1d9;
+  margin-bottom: 6px;
+}
+.panel-sub { color: #8b949e; font-size: 0.85rem; margin-bottom: 20px; }
+
+/* ── Data tables ── */
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #21262d; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.data-table thead tr { background: #161b22; }
+.data-table th {
+  padding: 10px 14px; text-align: left;
+  color: #8b949e; font-weight: 600;
+  border-bottom: 1px solid #21262d;
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid #1c2128;
+  vertical-align: top;
+}
+.data-table tbody tr:nth-child(even) { background: #0d1117; }
+.data-table tbody tr:hover { background: #1c2128; }
+.data-table .idx { color: #8b949e; font-weight: 600; width: 36px; }
+.null-cell { color: #6e7681; font-style: italic; }
+
+/* ── Record cards ── */
+.record-card {
+  border: 1px solid #21262d;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.record-card:hover { border-color: #444c56; }
+.card-changed { border-left: 4px solid #ffa726; }
+.card-dup     { border-left: 4px solid #ef5350; }
+.card-ok      { border-left: 4px solid #66bb6a; }
+
+.card-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 18px;
+  background: #161b22;
+  user-select: none;
+}
+.rec-id   { font-weight: 700; color: #8b949e; min-width: 36px; }
+.rec-name { font-weight: 600; color: #e0e0e0; flex: 1; }
+.chevron  { color: #555; font-size: 0.75rem; transition: transform 0.25s; }
+.record-card.open .chevron { transform: rotate(180deg); }
+
+.card-body {
+  display: none;
+  padding: 16px 18px;
+  background: #0d1117;
+}
+.record-card.open .card-body { display: block; }
+
+/* ── Badges ── */
+.badge {
+  font-size: 0.68rem; font-weight: 700;
+  padding: 3px 8px; border-radius: 20px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.badge-changed { background: rgba(255,167,38,0.15); color: #ffa726; border: 1px solid rgba(255,167,38,0.4); }
+.badge-dup     { background: rgba(239,83,80,0.15);  color: #ef5350; border: 1px solid rgba(239,83,80,0.4); }
+.badge-ok      { background: rgba(102,187,106,0.15);color: #66bb6a; border: 1px solid rgba(102,187,106,0.4); }
+
+/* ── Change rows ── */
+.change-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 6px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1c2128;
+  align-items: start;
+}
+.change-row:last-child { border-bottom: none; }
+.change-row.muted { opacity: 0.55; }
+
+.change-field {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #8b949e;
+  padding-top: 2px;
+}
+.change-vals {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.before {
+  background: rgba(239,83,80,0.12);
+  border: 1px solid rgba(239,83,80,0.3);
+  color: #ef9a9a;
+  padding: 2px 8px; border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  text-decoration: line-through;
+  text-decoration-color: rgba(239,83,80,0.5);
+}
+.after {
+  background: rgba(102,187,106,0.12);
+  border: 1px solid rgba(102,187,106,0.3);
+  color: #a5d6a7;
+  padding: 2px 8px; border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+}
+.null-val {
+  background: rgba(144,164,174,0.12);
+  border: 1px solid rgba(144,164,174,0.3);
+  color: #90a4ae;
+}
+.arrow { color: #555; font-size: 1rem; }
+.change-rule {
+  grid-column: 2;
+  font-size: 0.75rem; color: #6e7681;
+  font-style: italic;
+}
+.dup-note   { color: #ef9a9a; font-size: 0.85rem; margin-bottom: 8px; }
+.also-note  { color: #8b949e; font-size: 0.82rem; margin: 8px 0 4px; }
+
+/* ── Expand / collapse all ── */
+.toolbar {
+  display: flex; gap: 10px;
+  margin-bottom: 18px;
+}
+.toolbar-btn {
+  background: #21262d; border: 1px solid #30363d;
+  color: #8b949e; padding: 6px 14px;
+  border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+}
+.toolbar-btn:hover { background: #30363d; color: #e0e0e0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Healthcare Credentialing Demo &mdash; Data Cleansing Report</h1>
+  <p>Healthcare provider credentialing &middot; 16 raw records &rarr; 14 clean records</p>
+  
+<div class="stats-bar">
+  <div class="stat"><span class="stat-num">16</span><span class="stat-label">Raw Records</span></div>
+  <div class="stat-arrow">&#8594;</div>
+  <div class="stat highlight-changed"><span class="stat-num">14</span><span class="stat-label">Records Changed</span></div>
+  <div class="stat highlight-dup"><span class="stat-num">2</span><span class="stat-label">Duplicates Removed</span></div>
+  <div class="stat highlight-ok"><span class="stat-num">0</span><span class="stat-label">Already Clean</span></div>
+  <div class="stat-arrow">&#8594;</div>
+  <div class="stat highlight-out"><span class="stat-num">14</span><span class="stat-label">Clean Records</span></div>
+  <div class="stat dim"><span class="stat-num">51</span><span class="stat-label">Total Field Fixes</span></div>
+</div>
+</header>
+
+<nav class="tab-nav">
+  <button id="btn-input"  class="tab-btn active" onclick="showTab('input')">
+    <span class="tab-step">1</span>Raw Input Data
+  </button>
+  <button id="btn-steps"  class="tab-btn" onclick="showTab('steps')">
+    <span class="tab-step">2</span>Cleansing Steps
+  </button>
+  <button id="btn-output" class="tab-btn" onclick="showTab('output')">
+    <span class="tab-step">3</span>Clean Output
+  </button>
+</nav>
+
+<!-- Tab 1: Raw Input -->
+<div id="panel-input" class="tab-panel active">
+  <div class="panel-title">Raw Input Data</div>
+  <div class="panel-sub">
+    16 records as received from the source system &mdash; before any cleansing.
+    <em style="color:#ef5350">Red cells</em> indicate missing values.
+  </div>
+  
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>#</th><th>name</th><th>npi</th><th>role</th><th>credential_type</th><th>license_number</th><th>license_expiry</th><th>state</th><th>specialty</th><th>organization</th></tr></thead>
+    <tbody><tr><td class="idx">#0</td><td>SMITH, JOHN</td><td>1234567890</td><td>MD</td><td>Medical License</td><td>  ML-CA-00123  </td><td>12/31/2025</td><td>California</td><td>cardiology</td><td>  City General Hospital  </td></tr>
+<tr><td class="idx">#1</td><td>dr. jane doe</td><td>2345678901</td><td>DO</td><td>BOARD CERTIFICATION</td><td>BC-AM-00456</td><td>2026-06-30</td><td>CA</td><td>Oncology</td><td>City General Hospital</td></tr>
+<tr><td class="idx">#2</td><td>Robert Lee MD</td><td>3456789012</td><td>MD</td><td>dea registration</td><td>DEA-12345</td><td>January 15 2025</td><td>ca</td><td>CARDIO</td><td>Sunrise Medical Center</td></tr>
+<tr><td class="idx">#3</td><td>Emily  Chen NP</td><td>4567890123</td><td>NP</td><td>Medical License</td><td>ML-TX-00789</td><td>03/15/2026</td><td>Texas</td><td>Family Medicine</td><td>N/A</td></tr>
+<tr><td class="idx">#4</td><td>WILLIAMS, SARAH</td><td>5678901234</td><td>MD</td><td>Board Certification</td><td>BC-NY-01122</td><td>2025-09-01</td><td>New York</td><td>neurology</td><td>Metro Health System</td></tr>
+<tr><td class="idx">#5</td><td>Michael Brown DO</td><td>123</td><td>DO</td><td>Medical License</td><td>ML-FL-00222</td><td>11/30/2025</td><td>Florida</td><td>Orthopedics</td><td>Bayside Clinic</td></tr>
+<tr><td class="idx">#6</td><td>GARCIA, MARIA</td><td>0000000000</td><td>NP</td><td>Medical License</td><td>ML-TX-00333</td><td>2026-01-01</td><td>TX</td><td>Pediatrics</td><td>Children's Care Center</td></tr>
+<tr><td class="idx">#7</td><td>James Wilson</td><td class="null-cell">(missing)</td><td>MD</td><td>DEA Registration</td><td>DEA-99887</td><td>07/04/2025</td><td>ILLINOIS</td><td>Psychiatry</td><td>Mind &amp; Wellness Institute</td></tr>
+<tr><td class="idx">#8</td><td>Patricia  Moore MD</td><td>6789012345</td><td>MD</td><td>Board Certification</td><td>BC-WA-00555</td><td>not a date</td><td>Washington</td><td>Cardiology</td><td>Northwest Medical Group</td></tr>
+<tr><td class="idx">#9</td><td>dr. kevin patel</td><td>7890123456</td><td>MD</td><td>MEDICAL LICENSE</td><td>  ML-CO-00666  </td><td class="null-cell">(missing)</td><td>Colorado</td><td>Radiology</td><td>Mountain View Hospital</td></tr>
+<tr><td class="idx">#10</td><td>JOHNSON, LISA</td><td>8901234567</td><td>NP</td><td>Medical License</td><td>ML-GA-00777</td><td>2025-12-31</td><td>georgia</td><td>Family Medicine</td><td>Southeast Health Partners</td></tr>
+<tr><td class="idx">#11</td><td>Thomas Anderson DO</td><td>9012345678</td><td>DO</td><td>Dea Registration</td><td>DEA-44332</td><td>30-Jun-2026</td><td>OHIO</td><td>Oncology</td><td>  Riverside Cancer Center  </td></tr>
+<tr><td class="idx">#12</td><td>Sandra Kim MD</td><td>1122334455</td><td>MD</td><td>Medical License</td><td class="null-cell">(missing)</td><td>2026-03-01</td><td>NY</td><td class="null-cell">(missing)</td><td>Metro Health System</td></tr>
+<tr><td class="idx">#13</td><td class="null-cell">(missing)</td><td>2233445566</td><td>MD</td><td>Board Certification</td><td>BC-MA-00999</td><td>2025-08-15</td><td>Massachusetts</td><td>Dermatology</td><td>Boston Medical Associates</td></tr>
+<tr><td class="idx">#14</td><td>SMITH, JOHN</td><td>1234567890</td><td>MD</td><td>Medical License</td><td>  ML-CA-00123  </td><td>12/31/2025</td><td>California</td><td>cardiology</td><td>  City General Hospital  </td></tr>
+<tr><td class="idx">#15</td><td>john smith</td><td>1234567890</td><td>MD</td><td>Medical License</td><td>ML-CA-00123</td><td>12/31/2025</td><td>CA</td><td>Cardiology</td><td>City General Hospital</td></tr>
+</tbody>
+  </table>
+</div>
+</div>
+
+<!-- Tab 2: Cleansing Steps -->
+<div id="panel-steps" class="tab-panel">
+  <div class="panel-title">Cleansing Steps &mdash; Record by Record</div>
+  <div class="panel-sub">
+    Click any card to expand / collapse. Fields highlighted in
+    <span style="color:#ef9a9a">red</span> show the original dirty value;
+    <span style="color:#a5d6a7">green</span> shows the corrected value.
+  </div>
+  <div class="toolbar">
+    <button class="toolbar-btn" onclick="expandAll()">Expand All</button>
+    <button class="toolbar-btn" onclick="collapseAll()">Collapse All</button>
+  </div>
+  
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#0</span>
+    <span class="rec-name">SMITH, JOHN</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">SMITH, JOHN</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">John Smith</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">California</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">CA</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+<div class="change-row">
+  <div class="change-field">specialty</div>
+  <div class="change-vals">
+    <span class="before">cardiology</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Cardiology</span>
+  </div>
+  <div class="change-rule">expand abbreviations, title-case</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#1</span>
+    <span class="rec-name">dr. jane doe</span>
+    <span class="badge badge-changed">2 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">dr. jane doe</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Jane Doe</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">BOARD CERTIFICATION</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">BoardCertification</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#2</span>
+    <span class="rec-name">Robert Lee MD</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">Robert Lee MD</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Robert Lee</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">ca</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">CA</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">dea registration</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">DEARegistration</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+<div class="change-row">
+  <div class="change-field">specialty</div>
+  <div class="change-vals">
+    <span class="before">CARDIO</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Cardiology</span>
+  </div>
+  <div class="change-rule">expand abbreviations, title-case</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#3</span>
+    <span class="rec-name">Emily  Chen NP</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">Emily  Chen NP</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Emily Chen</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">Texas</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">TX</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+<div class="change-row">
+  <div class="change-field">organization</div>
+  <div class="change-vals">
+    <span class="before">N/A</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after null-val">None</span>
+  </div>
+  <div class="change-rule">strip whitespace, nullify sentinels (N/A)</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#4</span>
+    <span class="rec-name">WILLIAMS, SARAH</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">WILLIAMS, SARAH</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Sarah Williams</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">New York</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">NY</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Board Certification</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">BoardCertification</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+<div class="change-row">
+  <div class="change-field">specialty</div>
+  <div class="change-vals">
+    <span class="before">neurology</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Neurology</span>
+  </div>
+  <div class="change-rule">expand abbreviations, title-case</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#5</span>
+    <span class="rec-name">Michael Brown DO</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">Michael Brown DO</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Michael Brown</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">npi</div>
+  <div class="change-vals">
+    <span class="before">123</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after null-val">None</span>
+  </div>
+  <div class="change-rule">must be 10 digits, no all-same-digit</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">Florida</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">FL</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#6</span>
+    <span class="rec-name">GARCIA, MARIA</span>
+    <span class="badge badge-changed">3 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">GARCIA, MARIA</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Maria Garcia</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">npi</div>
+  <div class="change-vals">
+    <span class="before">0000000000</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after null-val">None</span>
+  </div>
+  <div class="change-rule">must be 10 digits, no all-same-digit</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#7</span>
+    <span class="rec-name">James Wilson</span>
+    <span class="badge badge-changed">2 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">ILLINOIS</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">IL</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">DEA Registration</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">DEARegistration</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#8</span>
+    <span class="rec-name">Patricia  Moore MD</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">Patricia  Moore MD</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Patricia Moore</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">license_expiry</div>
+  <div class="change-vals">
+    <span class="before">not a date</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after null-val">NaT</span>
+  </div>
+  <div class="change-rule">parse multiple date formats</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">Washington</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">WA</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Board Certification</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">BoardCertification</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#9</span>
+    <span class="rec-name">dr. kevin patel</span>
+    <span class="badge badge-changed">4 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">dr. kevin patel</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Kevin Patel</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">license_expiry</div>
+  <div class="change-vals">
+    <span class="before"></span>
+    <span class="arrow">&#8594;</span>
+    <span class="after null-val">NaT</span>
+  </div>
+  <div class="change-rule">parse multiple date formats</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">Colorado</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">CO</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">MEDICAL LICENSE</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#10</span>
+    <span class="rec-name">JOHNSON, LISA</span>
+    <span class="badge badge-changed">3 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">JOHNSON, LISA</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Lisa Johnson</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">georgia</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">GA</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#11</span>
+    <span class="rec-name">Thomas Anderson DO</span>
+    <span class="badge badge-changed">3 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">Thomas Anderson DO</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Thomas Anderson</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">OHIO</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">OH</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Dea Registration</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">DEARegistration</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#12</span>
+    <span class="rec-name">Sandra Kim MD</span>
+    <span class="badge badge-changed">2 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">Sandra Kim MD</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Sandra Kim</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-changed open" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#13</span>
+    <span class="rec-name"><em>(no name)</em></span>
+    <span class="badge badge-changed">2 FIELDS CHANGED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    
+<div class="change-row">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">Massachusetts</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MA</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Board Certification</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">BoardCertification</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-dup" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#14</span>
+    <span class="rec-name">SMITH, JOHN</span>
+    <span class="badge badge-dup">DUPLICATE REMOVED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    <p class="dup-note">Same NPI as record #0 after normalisation.</p>
+    <p class='also-note'>Would have applied:</p>
+<div class="change-row muted">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">SMITH, JOHN</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">John Smith</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row muted">
+  <div class="change-field">state</div>
+  <div class="change-vals">
+    <span class="before">California</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">CA</span>
+  </div>
+  <div class="change-rule">map full name / casing to 2-letter code</div>
+</div>
+<div class="change-row muted">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+<div class="change-row muted">
+  <div class="change-field">specialty</div>
+  <div class="change-vals">
+    <span class="before">cardiology</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">Cardiology</span>
+  </div>
+  <div class="change-rule">expand abbreviations, title-case</div>
+</div>
+  </div>
+</div>
+<div class="record-card card-dup" onclick="this.classList.toggle('open')">
+  <div class="card-header">
+    <span class="rec-id">#15</span>
+    <span class="rec-name">john smith</span>
+    <span class="badge badge-dup">DUPLICATE REMOVED</span>
+    <span class="chevron">&#9660;</span>
+  </div>
+  <div class="card-body">
+    <p class="dup-note">Same NPI as record #0 after normalisation.</p>
+    <p class='also-note'>Would have applied:</p>
+<div class="change-row muted">
+  <div class="change-field">name</div>
+  <div class="change-vals">
+    <span class="before">john smith</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">John Smith</span>
+  </div>
+  <div class="change-rule">strip honorifics, fix LAST,FIRST order, title-case</div>
+</div>
+<div class="change-row muted">
+  <div class="change-field">credential_type</div>
+  <div class="change-vals">
+    <span class="before">Medical License</span>
+    <span class="arrow">&#8594;</span>
+    <span class="after">MedicalLicense</span>
+  </div>
+  <div class="change-rule">normalise casing to canonical type</div>
+</div>
+  </div>
+</div>
+</div>
+
+<!-- Tab 3: Clean Output -->
+<div id="panel-output" class="tab-panel">
+  <div class="panel-title">Clean Output Data</div>
+  <div class="panel-sub">
+    14 records after normalisation and deduplication.
+  </div>
+  
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>name</th><th>npi</th><th>credential_type</th><th>license_number</th><th>license_expiry</th><th>state</th><th>specialty</th><th>organization</th></tr></thead>
+    <tbody><tr><td>Sandra Kim</td><td>1122334455</td><td>MedicalLicense</td><td class="null-cell">(missing)</td><td>2026-03-01</td><td>NY</td><td>Nan</td><td>Metro Health System</td></tr>
+<tr><td>John Smith</td><td>1234567890</td><td>MedicalLicense</td><td>ML-CA-00123</td><td>2025-12-31</td><td>CA</td><td>Cardiology</td><td>City General Hospital</td></tr>
+<tr><td>Nan</td><td>2233445566</td><td>BoardCertification</td><td>BC-MA-00999</td><td>2025-08-15</td><td>MA</td><td>Dermatology</td><td>Boston Medical Associates</td></tr>
+<tr><td>Jane Doe</td><td>2345678901</td><td>BoardCertification</td><td>BC-AM-00456</td><td>2026-06-30</td><td>CA</td><td>Oncology</td><td>City General Hospital</td></tr>
+<tr><td>Robert Lee</td><td>3456789012</td><td>DEARegistration</td><td>DEA-12345</td><td>2025-01-15</td><td>CA</td><td>Cardiology</td><td>Sunrise Medical Center</td></tr>
+<tr><td>Emily Chen</td><td>4567890123</td><td>MedicalLicense</td><td>ML-TX-00789</td><td>2026-03-15</td><td>TX</td><td>Family Medicine</td><td class="null-cell">(missing)</td></tr>
+<tr><td>Sarah Williams</td><td>5678901234</td><td>BoardCertification</td><td>BC-NY-01122</td><td>2025-09-01</td><td>NY</td><td>Neurology</td><td>Metro Health System</td></tr>
+<tr><td>Patricia Moore</td><td>6789012345</td><td>BoardCertification</td><td>BC-WA-00555</td><td class="null-cell">(missing)</td><td>WA</td><td>Cardiology</td><td>Northwest Medical Group</td></tr>
+<tr><td>Kevin Patel</td><td>7890123456</td><td>MedicalLicense</td><td>ML-CO-00666</td><td class="null-cell">(missing)</td><td>CO</td><td>Radiology</td><td>Mountain View Hospital</td></tr>
+<tr><td>Lisa Johnson</td><td>8901234567</td><td>MedicalLicense</td><td>ML-GA-00777</td><td>2025-12-31</td><td>GA</td><td>Family Medicine</td><td>Southeast Health Partners</td></tr>
+<tr><td>Thomas Anderson</td><td>9012345678</td><td>DEARegistration</td><td>DEA-44332</td><td>2026-06-30</td><td>OH</td><td>Oncology</td><td>Riverside Cancer Center</td></tr>
+<tr><td>Michael Brown</td><td class="null-cell">(missing)</td><td>MedicalLicense</td><td>ML-FL-00222</td><td>2025-11-30</td><td>FL</td><td>Orthopedics</td><td>Bayside Clinic</td></tr>
+<tr><td>Maria Garcia</td><td class="null-cell">(missing)</td><td>MedicalLicense</td><td>ML-TX-00333</td><td>2026-01-01</td><td>TX</td><td>Pediatrics</td><td>Children's Care Center</td></tr>
+<tr><td>James Wilson</td><td class="null-cell">(missing)</td><td>DEARegistration</td><td>DEA-99887</td><td>2025-07-04</td><td>IL</td><td>Psychiatry</td><td>Mind &amp; Wellness Institute</td></tr>
+</tbody>
+  </table>
+</div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.getElementById('btn-' + id).classList.add('active');
+}
+
+function expandAll() {
+  document.querySelectorAll('.record-card').forEach(c => c.classList.add('open'));
+}
+function collapseAll() {
+  document.querySelectorAll('.record-card').forEach(c => c.classList.remove('open'));
+}
+</script>
+</body>
+</html>
